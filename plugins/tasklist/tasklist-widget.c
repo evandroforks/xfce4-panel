@@ -543,7 +543,7 @@ xfce_tasklist_class_init (XfceTasklistClass *klass)
                                                               NULL,
                                                               "The ellipsize mode used for the button label",
                                                               PANGO_TYPE_ELLIPSIZE_MODE,
-                                                              DEFAULT_ELLIPSIZE_MODE,
+                                                              PANGO_ELLIPSIZE_NONE,
                                                               G_PARAM_READABLE | G_PARAM_STATIC_STRINGS));
 
   gtk_widget_class_install_style_property (gtkwidget_class,
