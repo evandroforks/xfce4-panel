@@ -560,7 +560,7 @@ xfce_tasklist_class_init (XfceTasklistClass *klass)
                                                               NULL,
                                                               "The ellipsize mode used for the button label",
                                                               PANGO_TYPE_ELLIPSIZE_MODE,
-                                                              PANGO_ELLIPSIZE_NONE,
+                                                              DEFAULT_ELLIPSIZE_MODE,
                                                               G_PARAM_READABLE | G_PARAM_STATIC_STRINGS));
 
   gtk_widget_class_install_style_property (gtkwidget_class,
@@ -2299,6 +2299,60 @@ xfce_tasklist_child_drag_end_event (GtkWidget      *widget,
 
 
 
+static gboolean
+xfce_tasklist_label_draw (GtkWidget *widget, cairo_t *cr, gpointer data)
+{
+  PangoLayout *layout;
+  GtkAllocation alloc;
+  GtkStyleContext *context;
+  gint x, y;
+
+  layout = gtk_label_get_layout (GTK_LABEL (widget));
+
+  /* only intercept when text was ellipsized */
+  if (!pango_layout_is_ellipsized (layout))
+    return FALSE;
+
+  gtk_widget_get_allocation (widget, &alloc);
+  gtk_label_get_layout_offsets (GTK_LABEL (widget), &x, &y);
+  x -= alloc.x;
+  y -= alloc.y;
+  context = gtk_widget_get_style_context (widget);
+
+  /* measure "." */
+  PangoLayout *dot_layout = pango_layout_copy (layout);
+  pango_layout_set_text (dot_layout, ".", -1);
+  pango_layout_set_ellipsize (dot_layout, PANGO_ELLIPSIZE_NONE);
+  PangoRectangle dot_extents;
+  pango_layout_get_pixel_extents (dot_layout, NULL, &dot_extents);
+
+  /* render the full text clipped to (width - dot_width) */
+  PangoLayout *text_layout = pango_layout_copy (layout);
+  pango_layout_set_text (text_layout, pango_layout_get_text (layout), -1);
+  pango_layout_set_ellipsize (text_layout, PANGO_ELLIPSIZE_NONE);
+  pango_layout_set_width (text_layout, -1);
+
+  cairo_save (cr);
+  cairo_rectangle (cr, 0, 0, alloc.width - dot_extents.width, alloc.height);
+  cairo_clip (cr);
+  gtk_render_layout (context, cr, x, y, text_layout);
+  cairo_restore (cr);
+
+  /* draw "." right after the clipped text */
+  cairo_save (cr);
+  cairo_rectangle (cr, 0, 0, alloc.width, alloc.height);
+  cairo_clip (cr);
+  gtk_render_layout (context, cr, alloc.width - dot_extents.width, y, dot_layout);
+  cairo_restore (cr);
+
+  g_object_unref (text_layout);
+  g_object_unref (dot_layout);
+
+  return TRUE;
+}
+
+
+
 static XfceTasklistChild *
 xfce_tasklist_child_new (XfceTasklist *tasklist)
 {
@@ -2350,6 +2404,8 @@ xfce_tasklist_child_new (XfceTasklist *tasklist)
     gtk_widget_show (child->icon);
 
   child->label = gtk_label_new (NULL);
+  gtk_widget_set_size_request (child->label, 0, -1);
+  g_signal_connect (child->label, "draw", G_CALLBACK (xfce_tasklist_label_draw), NULL);
   gtk_box_pack_start (GTK_BOX (child->box), child->label, TRUE, TRUE, 0);
   if (!xfce_tasklist_vertical (tasklist))
     {
